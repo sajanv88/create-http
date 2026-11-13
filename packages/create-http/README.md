@@ -468,3 +468,11 @@ pnpm lint                                             # Biome, from the repo roo
 
 Source is in `src/` as `.mts` files, and `tsc` writes ES modules and type declarations to `dist/`. Tests in `test/` use `node:test` against a local HTTP server and import the built package, as a consumer would.
 
+### Releasing
+
+Publishing is automatic: a merge to `main` that changes `src/` publishes the version in `package.json` to npm.
+
+1. In your PR, bump `version` in `packages/create-http/package.json`: patch for fixes, minor for new features, major for breaking changes. The PR's **version** check fails if `src/` changed and that version is already on npm or isn't higher than the latest.
+2. Merge. The **Publish** workflow (`.github/workflows/main.yaml`) tests, builds and publishes the package with an npm provenance attestation, then creates the `vX.Y.Z` tag and GitHub Release.
+
+Changes outside `src/` (README, tests, tooling) don't publish and don't need a bump. To publish one of those anyway, bump the version, merge, and run **Publish** by hand from the Actions tab.

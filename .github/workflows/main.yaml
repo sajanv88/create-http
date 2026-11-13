@@ -1,0 +1,85 @@
+# Publishes create-http to npm when its source changes on main, then tags the release.
+# The version comes from packages/create-http/package.json; pr.yaml makes sure it was bumped.
+name: Publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - packages/create-http/src/**
+  # Re-run a publish by hand, e.g. after setting up the npm trusted publisher. Main only (see `if`).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never cancel a publish half-way; queue the next one instead.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  PACKAGE_DIR: packages/create-http
+  TURBO_TELEMETRY_DISABLED: "1"
+
+jobs:
+  publish:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing (OIDC) and provenance; no npm token is stored
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check the version isn't published yet
+        id: version
+        run: node .github/scripts/check-version.mjs "${PACKAGE_DIR}"
+
+      - run: pnpm exec turbo run check-types test build --filter=create-http
+
+      # pnpm pack rewrites workspace: ranges; npm publish then uploads that exact tarball.
+      - name: Pack
+        working-directory: ${{ env.PACKAGE_DIR }}
+        run: pnpm pack --pack-destination "${RUNNER_TEMP}/pack"
+
+      - name: Use npm 11.5.1 or later (needed for trusted publishing)
+        run: |
+          current="$(npm --version)"
+          if [ "$(printf '%s\n' 11.5.1 "${current}" | sort -V | head -n1)" != 11.5.1 ]; then
+            npm install --global "npm@>=11.5.1 <12"
+          fi
+          npm --version
+
+      - name: Publish to npm
+        run: npm publish "${RUNNER_TEMP}"/pack/*.tgz --access public
+
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write # creates the vX.Y.Z tag and the GitHub Release
+    steps:
+      - name: Tag and create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.publish.outputs.version }}
+        run: |
+          gh release create "v${VERSION}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --target "${GITHUB_SHA}" \
+            --title "v${VERSION}" \
+            --generate-notes \
+            --notes "npm: https://www.npmjs.com/package/create-http/v/${VERSION}"

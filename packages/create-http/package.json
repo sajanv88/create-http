@@ -1,8 +1,27 @@
 {
   "name": "create-http",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "description": "A small fetch-based HTTP client with retries, a circuit breaker, caching, interceptors and token refresh.",
+  "keywords": [
+    "http",
+    "fetch",
+    "client",
+    "retry",
+    "circuit-breaker",
+    "cache",
+    "interceptors"
+  ],
+  "homepage": "https://github.com/sajanv88/create-http/tree/main/packages/create-http#readme",
+  "bugs": {
+    "url": "https://github.com/sajanv88/create-http/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sajanv88/create-http.git",
+    "directory": "packages/create-http"
+  },
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
@@ -10,8 +29,15 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
+  "engines": {
+    "node": ">=24"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "dev": "tsc --watch --preserveWatchOutput",
     "build": "tsc",

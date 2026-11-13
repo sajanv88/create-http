@@ -1,5 +1,5 @@
 {
-  "name": "create-http",
+  "name": "create-http-monorepo",
   "private": true,
   "scripts": {
     "build": "turbo run build",
