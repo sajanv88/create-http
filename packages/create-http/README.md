@@ -460,10 +460,11 @@ HttpResponse<T>  or  thrown error
 
 ```sh
 pnpm exec turbo run build --filter=create-http        # compile src/ to dist/
+pnpm exec turbo run test --filter=create-http         # build, then run the tests
 pnpm exec turbo run check-types --filter=create-http  # type-check without emitting
 pnpm exec turbo run dev --filter=create-http          # rebuild on change
 pnpm lint                                             # Biome, from the repo root
 ```
 
-Source is in `src/` as `.mts` files, and `tsc` writes ES modules and type declarations to `dist/`.
+Source is in `src/` as `.mts` files, and `tsc` writes ES modules and type declarations to `dist/`. Tests in `test/` use `node:test` against a local HTTP server and import the built package, as a consumer would.
 

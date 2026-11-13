@@ -76,7 +76,7 @@
       }
     },
     {
-      "includes": ["**/*.test.ts", "**/*.test.tsx", "**/*.test-d.ts"],
+      "includes": ["**/*.test.ts", "**/*.test.mts", "**/*.test.tsx", "**/*.test-d.ts"],
       "linter": {
         "domains": {
           "test": "recommended"

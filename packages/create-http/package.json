@@ -15,7 +15,8 @@
   "scripts": {
     "dev": "tsc --watch --preserveWatchOutput",
     "build": "tsc",
-    "check-types": "tsc --noEmit"
+    "test": "node --test",
+    "check-types": "tsc --noEmit && tsc -p test"
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",
