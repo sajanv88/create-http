@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "..",
+    // Node runs these files by stripping types, so type-only imports must say `import type`.
+    "verbatimModuleSyntax": true,
+    // Type-check against the source, so check-types doesn't need a build first.
+    "paths": {
+      "fast-http-client": ["../src/index.mts"]
+    }
+  },
+  "include": ["."]
+}

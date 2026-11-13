@@ -1,159 +1,70 @@
-# Turborepo starter
+# fast-http-client
 
-This Turborepo starter is maintained by the Turborepo core team.
+A small HTTP client for browsers and Node, built on `fetch`, with the things production code ends up needing:
 
-## Using this example
+- retries with exponential backoff that honour `Retry-After`
+- a circuit breaker per origin
+- caching of GET responses in memory, IndexedDB, Redis or your own store
+- request and response interceptors
+- a token refresh on `401`, shared by every request waiting on it
+- timeouts, cancellation, JSON in and out, typed errors
 
-Run the following command:
-
-```sh
-npx create-turbo@latest
-```
-
-## What's inside?
-
-This Turborepo includes the following packages/apps:
-
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `@next/eslint-plugin-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+It has no runtime dependencies and ships its own TypeScript types.
 
 ```sh
-cd my-turborepo
-turbo build
+npm install fast-http-client
 ```
 
-Without global `turbo`, use your package manager:
+```ts
+import { createHttp } from "fast-http-client";
+
+const api = createHttp({ baseUrl: "https://api.example.com/v1" });
+
+const { data: user } = await api.get<User>("/users/42");
+```
+
+**Full documentation: [packages/create-http/README.md](packages/create-http/README.md).**
+
+## What's in this repository
+
+This is a pnpm and Turborepo monorepo. The library is one package; the two apps are its documentation site and an example of it in use.
+
+| Path | What it is |
+| --- | --- |
+| [`packages/create-http`](packages/create-http) | The library, published to npm as [`fast-http-client`](https://www.npmjs.com/package/fast-http-client). |
+| [`apps/docs`](apps/docs) | The documentation website (Next.js, port 3001). It will be published as the project's docs site. |
+| [`apps/web`](apps/web) | An example app showing `fast-http-client` in a Next.js project (port 3000). |
+| [`packages/typescript-config`](packages/typescript-config) | Shared `tsconfig` presets for the packages and apps. |
+
+`apps/docs` and `apps/web` are placeholder pages for now; their content comes next.
+
+## Development
+
+**You need:** Node 24 (see [`.node-version`](.node-version)) and pnpm 11.25.0, the version pinned in `packageManager`.
 
 ```sh
-cd my-turborepo
-npx turbo build
-pnpm exec turbo build
-pnpm exec turbo build
+pnpm install
+pnpm dev            # the library in watch mode, plus both apps
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+| Command | What it does |
+| --- | --- |
+| `pnpm build` | Build every package and app (Turborepo builds `fast-http-client` before the apps). |
+| `pnpm test` | Build `fast-http-client`, then run its tests. |
+| `pnpm check-types` | Type-check everything. |
+| `pnpm lint` | Lint and format-check with [Biome](https://biomejs.dev/). |
+| `pnpm lint:fix` | Apply Biome's fixes and formatting. |
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+To run a task for one workspace, filter it: `pnpm exec turbo run test --filter=fast-http-client`.
 
-```sh
-turbo build --filter=docs
-```
+## Contributing
 
-Without global `turbo`:
+1. Branch from `main` and open a pull request. Draft PRs aren't checked; mark the PR ready when you want CI.
+2. CI runs Biome, type-checks, tests and builds, checks the npm tarball, and runs `pnpm audit`.
+3. If your change touches `packages/create-http/src`, bump `version` in [`packages/create-http/package.json`](packages/create-http/package.json): patch for fixes, minor for features, major for breaking changes. CI fails otherwise.
 
-```sh
-npx turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-```
+Merging to `main` publishes the new version to npm with a provenance attestation and creates the matching GitHub Release. The details are in [Releasing](packages/create-http/README.md#releasing).
 
-### Develop
+## License
 
-To develop all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo dev
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo dev
-pnpm exec turbo dev
-pnpm exec turbo dev
-```
-
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo dev --filter=web
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
-
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
-```
-
-Without global `turbo`, use your package manager:
-
-```sh
-cd my-turborepo
-npx turbo login
-pnpm exec turbo login
-pnpm exec turbo login
-```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-pnpm exec turbo link
-pnpm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
+[MIT](LICENSE) © 2026 sajanv88

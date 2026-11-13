@@ -1,3 +1,6 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+catalog:
+  "@biomejs/biome": 2.5.15
