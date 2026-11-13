@@ -1,4 +1,4 @@
-# Publishes create-http to npm when its source changes on main, then tags the release.
+# Publishes fast-http-client to npm when its source changes on main, then tags the release.
 # The version comes from packages/create-http/package.json; pr.yaml makes sure it was bumped.
 name: Publish
 
@@ -47,7 +47,7 @@ jobs:
         id: version
         run: node .github/scripts/check-version.mjs "${PACKAGE_DIR}"
 
-      - run: pnpm exec turbo run check-types test build --filter=create-http
+      - run: pnpm exec turbo run check-types test build --filter=fast-http-client
 
       # pnpm pack rewrites workspace: ranges; npm publish then uploads that exact tarball.
       - name: Pack
@@ -82,4 +82,4 @@ jobs:
             --target "${GITHUB_SHA}" \
             --title "v${VERSION}" \
             --generate-notes \
-            --notes "npm: https://www.npmjs.com/package/create-http/v/${VERSION}"
+            --notes "npm: https://www.npmjs.com/package/fast-http-client/v/${VERSION}"

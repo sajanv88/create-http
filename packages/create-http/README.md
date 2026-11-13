@@ -1,4 +1,4 @@
-# create-http
+# fast-http-client
 
 A small HTTP client built on `fetch`, for browsers and Node 24+. It adds what plain `fetch` leaves out:
 
@@ -33,18 +33,18 @@ It has no runtime dependencies.
 ## Install
 
 ```sh
-npm install create-http
-# or: pnpm add create-http / yarn add create-http
+npm install fast-http-client
+# or: pnpm add fast-http-client / yarn add fast-http-client
 ```
 
 **Requirements:** Node 22 or later, or a browser that supports `AbortSignal.any` (all current ones do). The package is ESM only and ships its own TypeScript types.
 
-Inside this monorepo, depend on the local copy instead: `"create-http": "workspace:*"`. `turbo run build` builds the package before the apps that use it, and `pnpm dev` keeps it rebuilding alongside them.
+Inside this monorepo, depend on the local copy instead: `"fast-http-client": "workspace:*"`. `turbo run build` builds the package before the apps that use it, and `pnpm dev` keeps it rebuilding alongside them.
 
 ## Quick start
 
 ```ts
-import { createHttp } from "create-http";
+import { createHttp } from "fast-http-client";
 
 export const api = createHttp({
   baseUrl: "https://api.example.com/v1",
@@ -154,7 +154,7 @@ await api.post("/users/42/avatar", form);
 | `TypeError` | A network failure: DNS, refused connection, CORS. |
 
 ```ts
-import { CircuitOpenError, HttpError } from "create-http";
+import { CircuitOpenError, HttpError } from "fast-http-client";
 
 try {
   await api.get("/orders/7");
@@ -270,7 +270,7 @@ Entries live for `cacheTtlMs` (60 seconds by default). The client doesn't read `
 | an adapter | your own, for example `memoryCache(…)` or `redisCache(…)` |
 
 ```ts
-import { createHttp, memoryCache, redisCache } from "create-http";
+import { createHttp, memoryCache, redisCache } from "fast-http-client";
 import Redis from "ioredis";
 
 // Browser: persists across reloads
@@ -313,7 +313,7 @@ Or turn caching off for those requests with `cache: false`.
 Implement `CacheAdapter`:
 
 ```ts
-import type { CacheAdapter } from "create-http";
+import type { CacheAdapter } from "fast-http-client";
 
 const myCache: CacheAdapter = {
   async get(key) { /* return a CacheEntry, or undefined if missing or expired */ },
@@ -447,7 +447,7 @@ HttpResponse<T>  or  thrown error
 | --- | --- |
 | `createHttp` | function |
 | `memoryCache(maxEntries = 500)` | cache adapter, least-recently-used |
-| `indexedDbCache(dbName = "create-http-cache")` | cache adapter |
+| `indexedDbCache(dbName = "fast-http-client-cache")` | cache adapter |
 | `redisCache(client, prefix = "http:")` | cache adapter |
 | `HttpError`, `CircuitOpenError` | error classes |
 | `DEFAULT_RETRY`, `DEFAULT_BREAKER` | default options, to read or spread |
@@ -459,10 +459,10 @@ HttpResponse<T>  or  thrown error
 ## Development
 
 ```sh
-pnpm exec turbo run build --filter=create-http        # compile src/ to dist/
-pnpm exec turbo run test --filter=create-http         # build, then run the tests
-pnpm exec turbo run check-types --filter=create-http  # type-check without emitting
-pnpm exec turbo run dev --filter=create-http          # rebuild on change
+pnpm exec turbo run build --filter=fast-http-client        # compile src/ to dist/
+pnpm exec turbo run test --filter=fast-http-client         # build, then run the tests
+pnpm exec turbo run check-types --filter=fast-http-client  # type-check without emitting
+pnpm exec turbo run dev --filter=fast-http-client          # rebuild on change
 pnpm lint                                             # Biome, from the repo root
 ```
 

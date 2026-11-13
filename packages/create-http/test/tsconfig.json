@@ -7,7 +7,7 @@
     "verbatimModuleSyntax": true,
     // Type-check against the source, so check-types doesn't need a build first.
     "paths": {
-      "create-http": ["../src/index.mts"]
+      "fast-http-client": ["../src/index.mts"]
     }
   },
   "include": ["."]

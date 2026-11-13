@@ -1,6 +1,6 @@
 {
-  "name": "create-http",
-  "version": "0.1.0",
+  "name": "fast-http-client",
+  "version": "0.1.1",
   "description": "A small fetch-based HTTP client with retries, a circuit breaker, caching, interceptors and token refresh.",
   "keywords": [
     "http",

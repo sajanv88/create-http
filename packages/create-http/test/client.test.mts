@@ -12,7 +12,7 @@ import {
   type HttpResponse,
   memoryCache,
   type RetryOptions,
-} from "create-http";
+} from "fast-http-client";
 
 /** What the /echo route sends back. */
 interface Echo {

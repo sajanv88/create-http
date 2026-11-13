@@ -1,4 +1,4 @@
-# create-http
+# fast-http-client
 
 A small HTTP client for browsers and Node, built on `fetch`, with the things production code ends up needing:
 
@@ -12,11 +12,11 @@ A small HTTP client for browsers and Node, built on `fetch`, with the things pro
 It has no runtime dependencies and ships its own TypeScript types.
 
 ```sh
-npm install create-http
+npm install fast-http-client
 ```
 
 ```ts
-import { createHttp } from "create-http";
+import { createHttp } from "fast-http-client";
 
 const api = createHttp({ baseUrl: "https://api.example.com/v1" });
 
@@ -31,9 +31,9 @@ This is a pnpm and Turborepo monorepo. The library is one package; the two apps 
 
 | Path | What it is |
 | --- | --- |
-| [`packages/create-http`](packages/create-http) | The library, published to npm as [`create-http`](https://www.npmjs.com/package/create-http). |
+| [`packages/create-http`](packages/create-http) | The library, published to npm as [`fast-http-client`](https://www.npmjs.com/package/fast-http-client). |
 | [`apps/docs`](apps/docs) | The documentation website (Next.js, port 3001). It will be published as the project's docs site. |
-| [`apps/web`](apps/web) | An example app showing `create-http` in a Next.js project (port 3000). |
+| [`apps/web`](apps/web) | An example app showing `fast-http-client` in a Next.js project (port 3000). |
 | [`packages/typescript-config`](packages/typescript-config) | Shared `tsconfig` presets for the packages and apps. |
 
 `apps/docs` and `apps/web` are placeholder pages for now; their content comes next.
@@ -49,13 +49,13 @@ pnpm dev            # the library in watch mode, plus both apps
 
 | Command | What it does |
 | --- | --- |
-| `pnpm build` | Build every package and app (Turborepo builds `create-http` before the apps). |
-| `pnpm test` | Build `create-http`, then run its tests. |
+| `pnpm build` | Build every package and app (Turborepo builds `fast-http-client` before the apps). |
+| `pnpm test` | Build `fast-http-client`, then run its tests. |
 | `pnpm check-types` | Type-check everything. |
 | `pnpm lint` | Lint and format-check with [Biome](https://biomejs.dev/). |
 | `pnpm lint:fix` | Apply Biome's fixes and formatting. |
 
-To run a task for one workspace, filter it: `pnpm exec turbo run test --filter=create-http`.
+To run a task for one workspace, filter it: `pnpm exec turbo run test --filter=fast-http-client`.
 
 ## Contributing
 

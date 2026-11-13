@@ -71,7 +71,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec turbo run build --affected
       # Builds the package even when unaffected (a cache hit then), so the tarball check always runs.
-      - run: pnpm exec turbo run build --filter=create-http
+      - run: pnpm exec turbo run build --filter=fast-http-client
       - name: Check the npm tarball
         working-directory: ${{ env.PACKAGE_DIR }}
         run: pnpm pack --dry-run

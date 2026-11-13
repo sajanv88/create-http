@@ -7,7 +7,7 @@ interface StoredEntry {
   expiresAt: number;
 }
 
-export function indexedDbCache(dbName = "create-http-cache"): CacheAdapter {
+export function indexedDbCache(dbName = "fast-http-client-cache"): CacheAdapter {
   let dbPromise: Promise<IDBDatabase> | undefined;
 
   function open(): Promise<IDBDatabase> {
