@@ -476,3 +476,7 @@ Publishing is automatic: a merge to `main` that changes `src/` publishes the ver
 2. Merge. The **Publish** workflow (`.github/workflows/main.yaml`) tests, builds and publishes the package with an npm provenance attestation, then creates the `vX.Y.Z` tag and GitHub Release.
 
 Changes outside `src/` (README, tests, tooling) don't publish and don't need a bump. To publish one of those anyway, bump the version, merge, and run **Publish** by hand from the Actions tab.
+
+## License
+
+[MIT](./LICENSE)

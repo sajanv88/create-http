@@ -11,6 +11,7 @@
     "cache",
     "interceptors"
   ],
+  "license": "MIT",
   "homepage": "https://github.com/sajanv88/create-http/tree/main/packages/create-http#readme",
   "bugs": {
     "url": "https://github.com/sajanv88/create-http/issues"
