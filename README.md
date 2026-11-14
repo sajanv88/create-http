@@ -23,7 +23,7 @@ const api = createHttp({ baseUrl: "https://api.example.com/v1" });
 const { data: user } = await api.get<User>("/users/42");
 ```
 
-**Full documentation: [packages/create-http/README.md](packages/create-http/README.md).**
+**Documentation: [sajanv88.github.io/create-http](https://sajanv88.github.io/create-http/)**, or the [package README](packages/create-http/README.md).
 
 ## What's in this repository
 
@@ -32,11 +32,11 @@ This is a pnpm and Turborepo monorepo. The library is one package; the two apps 
 | Path | What it is |
 | --- | --- |
 | [`packages/create-http`](packages/create-http) | The library, published to npm as [`fast-http-client`](https://www.npmjs.com/package/fast-http-client). |
-| [`apps/docs`](apps/docs) | The documentation website (Next.js, port 3001). It will be published as the project's docs site. |
+| [`apps/docs`](apps/docs) | The documentation website, a static Next.js site published to [GitHub Pages](https://sajanv88.github.io/create-http/) (port 3001 locally). |
 | [`apps/web`](apps/web) | An example app showing `fast-http-client` in a Next.js project (port 3000). |
 | [`packages/typescript-config`](packages/typescript-config) | Shared `tsconfig` presets for the packages and apps. |
 
-`apps/docs` and `apps/web` are placeholder pages for now; their content comes next.
+`apps/web` is a placeholder page for now; its example comes next.
 
 ## Development
 
