@@ -1,6 +1,6 @@
 # fast-http-client
 
-A small HTTP client built on `fetch`, for browsers and Node 24+. It adds what plain `fetch` leaves out:
+A small HTTP client built on `fetch`, for browsers and Node 22+. It adds what plain `fetch` leaves out:
 
 - a base URL, default headers and query-string encoding
 - JSON bodies sent and parsed automatically
@@ -11,6 +11,8 @@ A small HTTP client built on `fetch`, for browsers and Node 24+. It adds what pl
 - caching of GET responses in memory, IndexedDB, Redis or your own store
 - request and response interceptors
 - a token refresh on `401`, shared by every request waiting on it
+
+**Documentation site: [sajanv88.github.io/create-http](https://sajanv88.github.io/create-http/)**
 
 It has no runtime dependencies.
 
