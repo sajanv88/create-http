@@ -1,0 +1,347 @@
+/*
+ * The site's own styles. nuvui styles its components; the page around them is ours.
+ * Plain CSS with BEM class names, tokens for every color, space and size, smallest
+ * screen first. Breakpoints are nuvui's: sm 40rem, md 48rem, lg 64rem.
+ */
+
+/* Geist, loaded by next/font in the layout, as nuvui's fonts. Not in a layer, so it
+   wins over the tokens layer. */
+:root {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+/* Headings that a link jumps to stop below the sticky bar (4rem) with room to spare. */
+html {
+  scroll-padding-block-start: 5.5rem;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+}
+
+/* Links in running text: underlined, so they're told apart by more than color. */
+.site-main a:not([class]),
+.site-footer a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--color-primary);
+  text-underline-offset: 0.2em;
+}
+
+.site-main a:not([class]):hover,
+.site-footer a:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* Off screen until it has focus, then the first thing on the page. */
+.skip-link {
+  position: absolute;
+  inset-block-start: calc(var(--spacing) * 2);
+  inset-inline-start: calc(var(--spacing) * 2);
+  z-index: 100;
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+  border-radius: var(--radius-md);
+  background-color: var(--color-primary);
+  color: var(--color-primary-foreground);
+  font-weight: var(--font-weight-medium);
+  transform: translateY(-200%);
+}
+
+.skip-link:focus-visible {
+  transform: none;
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+.site-main {
+  min-block-size: 70dvh;
+}
+
+.site-main:focus {
+  outline: none;
+}
+
+.site-header__brand {
+  color: inherit;
+  font-weight: var(--font-weight-semibold);
+  text-decoration: none;
+}
+
+.site-footer {
+  display: grid;
+  gap: calc(var(--spacing) * 1);
+  margin-block-start: calc(var(--spacing) * 16);
+  padding: calc(var(--spacing) * 8) calc(var(--spacing) * 4);
+  border-block-start: 1px solid var(--color-border);
+  color: var(--color-muted-foreground);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.site-footer__text {
+  margin: 0;
+}
+
+/* Code inside a sentence. */
+.inline-code {
+  padding: 0.1em 0.25em;
+  border-radius: var(--radius-sm);
+  background-color: var(--color-muted);
+  color: var(--color-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  overflow-wrap: anywhere;
+}
+
+.install-tabs {
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.data-table {
+  inline-size: 100%;
+}
+
+/* ---- Home ---- */
+
+.home {
+  display: grid;
+  gap: calc(var(--spacing) * 16);
+  inline-size: 100%;
+  max-inline-size: 64rem;
+  margin-inline: auto;
+  padding: calc(var(--spacing) * 10) calc(var(--spacing) * 4) 0;
+  box-sizing: border-box;
+}
+
+.home__hero {
+  display: grid;
+  gap: calc(var(--spacing) * 5);
+  justify-items: start;
+  min-inline-size: 0;
+}
+
+.home__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--spacing) * 2);
+}
+
+.home__title {
+  margin: 0;
+  font-size: clamp(2.25rem, 1.5rem + 3.5vw, 3.75rem);
+  font-weight: var(--font-weight-bold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  overflow-wrap: anywhere;
+}
+
+.home__lead {
+  margin: 0;
+  max-inline-size: 40rem;
+  color: var(--color-muted-foreground);
+  font-size: var(--text-lg);
+  line-height: var(--leading-relaxed);
+}
+
+.home__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--spacing) * 3);
+}
+
+.home__install {
+  inline-size: 100%;
+  max-inline-size: 36rem;
+}
+
+.home__section {
+  display: grid;
+  gap: calc(var(--spacing) * 5);
+  min-inline-size: 0;
+}
+
+.home__heading {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--text-2xl--line-height);
+  letter-spacing: var(--tracking-tight);
+}
+
+.home__text {
+  margin: 0;
+  max-inline-size: 42rem;
+  line-height: var(--leading-relaxed);
+}
+
+.home__features {
+  display: grid;
+  gap: calc(var(--spacing) * 4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 40rem) {
+  .home__features {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 64rem) {
+  .home__features {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.home__feature {
+  block-size: 100%;
+}
+
+.home__feature-icon {
+  display: inline-grid;
+  place-items: center;
+  inline-size: calc(var(--spacing) * 10);
+  block-size: calc(var(--spacing) * 10);
+  margin-block-end: calc(var(--spacing) * 2);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-muted);
+  color: var(--color-primary);
+}
+
+/* ---- Docs article (nuvui's "Page with its contents" block, in plain CSS) ---- */
+
+.article {
+  display: grid;
+  gap: calc(var(--spacing) * 10);
+  inline-size: 100%;
+  max-inline-size: 72rem;
+  margin-inline: auto;
+  padding: calc(var(--spacing) * 8) calc(var(--spacing) * 4) 0;
+  box-sizing: border-box;
+}
+
+@media (min-width: 64rem) {
+  .article {
+    grid-template-columns: minmax(0, 1fr) 15rem;
+    padding: calc(var(--spacing) * 12) calc(var(--spacing) * 8) 0;
+  }
+}
+
+.article__main {
+  display: grid;
+  gap: calc(var(--spacing) * 12);
+  align-content: start;
+  min-inline-size: 0;
+  max-inline-size: 48rem;
+}
+
+.article__head {
+  display: grid;
+  gap: calc(var(--spacing) * 2);
+}
+
+.article__kicker {
+  margin: 0;
+  color: var(--color-muted-foreground);
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.article__title {
+  margin: 0;
+  font-size: clamp(1.75rem, 1.25rem + 2.2vw, 2.5rem);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  overflow-wrap: anywhere;
+}
+
+.article__lead {
+  margin: 0;
+  color: var(--color-muted-foreground);
+  font-size: var(--text-lg);
+  line-height: var(--text-lg--line-height);
+}
+
+/* The contents behind a button: narrow screens only. Hidden this way, it's out of the
+   page for screen readers too. */
+@media (min-width: 64rem) {
+  .article__drawer {
+    display: none;
+  }
+}
+
+.article__toggle {
+  justify-content: space-between;
+  inline-size: 100%;
+}
+
+.article__contents {
+  padding-block-start: calc(var(--spacing) * 3);
+}
+
+.article__section {
+  display: grid;
+  gap: calc(var(--spacing) * 4);
+  min-inline-size: 0;
+}
+
+.article__section > p {
+  margin: 0;
+  line-height: var(--leading-relaxed);
+  overflow-wrap: anywhere;
+}
+
+.article__heading {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--text-2xl--line-height);
+  letter-spacing: var(--tracking-tight);
+}
+
+.article__subheading {
+  margin: calc(var(--spacing) * 4) 0 0;
+  font-size: var(--text-lg);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--text-lg--line-height);
+}
+
+.article__list,
+.article__steps {
+  display: grid;
+  gap: calc(var(--spacing) * 2);
+  margin: 0;
+  padding-inline-start: calc(var(--spacing) * 6);
+  line-height: var(--leading-relaxed);
+}
+
+/* The contents beside the text: wide screens only, and it stays in view. */
+.article__side {
+  display: none;
+}
+
+@media (min-width: 64rem) {
+  .article__side {
+    display: grid;
+    position: sticky;
+    inset-block-start: calc(4rem + var(--spacing) * 6);
+    gap: calc(var(--spacing) * 3);
+    align-content: start;
+    align-self: start;
+    max-block-size: calc(100dvh - 4rem - var(--spacing) * 12);
+    overflow-y: auto;
+  }
+}
+
+.article__label {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+}

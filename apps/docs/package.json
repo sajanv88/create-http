@@ -10,9 +10,15 @@
     "check-types": "next typegen && tsc --noEmit"
   },
   "dependencies": {
+    "@nuvui/chat": "0.2.2",
+    "@nuvui/icons": "0.1.0",
+    "@nuvui/react": "0.10.0",
+    "@nuvui/table": "0.1.10",
+    "@tanstack/react-table": "9.3.1",
     "next": "16.4.6",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "shiki": "4.6.0"
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",
