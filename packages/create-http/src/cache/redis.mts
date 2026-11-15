@@ -1,12 +1,22 @@
 import type { CacheAdapter, CacheEntry } from "./types.mjs";
 
+// The ioredis signatures.
 export interface RedisLike {
   get(key: string): Promise<string | null>;
-  set(key: string, value: string, mode: "PX", ttlMs: number): Promise<unknown>; // ioredis signature
-  del(key: string): Promise<unknown>;
+  set(key: string, value: string, mode: "PX", ttlMs: number): Promise<unknown>;
+  del(...keys: string[]): Promise<unknown>;
+  scan(
+    cursor: string,
+    match: "MATCH",
+    pattern: string,
+    count: "COUNT",
+    n: number,
+  ): Promise<[cursor: string, keys: string[]]>;
 }
 
 export function redisCache(client: RedisLike, prefix = "http:"): CacheAdapter {
+  // SCAN patterns are globs, so a prefix such as "api[1]:" must be escaped to match itself.
+  const pattern = `${prefix.replace(/[*?[\]\\]/g, "\\$&")}*`;
   return {
     async get(key) {
       const raw = await client.get(prefix + key);
@@ -19,6 +29,16 @@ export function redisCache(client: RedisLike, prefix = "http:"): CacheAdapter {
     },
     async delete(key) {
       await client.del(prefix + key);
+    },
+    async clear() {
+      // With no prefix the pattern is "*", which would delete everything else in the database too.
+      if (!prefix) throw new Error("redisCache: clear() needs a prefix");
+      let cursor = "0";
+      do {
+        const [next, keys] = await client.scan(cursor, "MATCH", pattern, "COUNT", 500);
+        if (keys.length > 0) await client.del(...keys);
+        cursor = next;
+      } while (cursor !== "0");
     },
   };
 }

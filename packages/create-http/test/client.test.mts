@@ -11,7 +11,9 @@ import {
   HttpError,
   type HttpResponse,
   memoryCache,
+  type RedisLike,
   type RetryOptions,
+  redisCache,
 } from "fast-http-client";
 
 /** What the /echo route sends back. */
@@ -217,6 +219,56 @@ describe("caching", () => {
     await cache.set("c", entry("3"), 10_000);
     assert.equal(await cache.get("b"), undefined);
     assert.ok(await cache.get("a"));
+  });
+
+  test("client.cache.clear() drops every entry", async () => {
+    const api = createHttp({ baseUrl: base, cache: memoryCache() });
+    await api.get("/count");
+    await api.get("/echo");
+    await api.cache.clear();
+    assert.equal((await api.get("/count")).fromCache, false);
+    assert.equal((await api.get("/echo")).fromCache, false);
+  });
+
+  test("client.cache.delete() drops one URL, keyed the way a GET would be", async () => {
+    const api = createHttp({
+      baseUrl: base,
+      cache: memoryCache(),
+      cacheKey: (config, url) => `${config.headers?.authorization}:${url}`,
+    });
+    api.interceptors.request.use((config) => ({
+      ...config,
+      headers: { ...config.headers, authorization: "Bearer a" },
+    }));
+    await api.get("/count");
+    await api.get("/echo");
+    await api.cache.delete("/count");
+    assert.equal((await api.get("/count")).fromCache, false);
+    assert.equal((await api.get("/echo")).fromCache, true);
+  });
+
+  test("redisCache.clear() deletes only keys under its prefix", async () => {
+    const data = new Map<string, string>([["other", "keep"]]);
+    const redis: RedisLike = {
+      async get(key) {
+        return data.get(key) ?? null;
+      },
+      async set(key, value) {
+        data.set(key, value);
+      },
+      async del(...keys) {
+        for (const key of keys) data.delete(key);
+      },
+      async scan(_cursor, _match, pattern) {
+        const prefix = pattern.slice(0, -1).replace(/\\(.)/g, "$1"); // undo the glob escaping
+        return ["0", [...data.keys()].filter((key) => key.startsWith(prefix))];
+      },
+    };
+    const cache = redisCache(redis, "api[1]:");
+    await cache.set("a", { status: 200, headers: [], body: "1", storeAt: 0 }, 10_000);
+    await cache.clear();
+    assert.deepEqual([...data.keys()], ["other"]);
+    await assert.rejects(redisCache(redis, "").clear(), /needs a prefix/);
   });
 });
 

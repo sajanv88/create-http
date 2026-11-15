@@ -61,6 +61,16 @@ export interface HttpClient {
     /** Returns a function that removes the interceptor. */
     response: { use(handlers: ResponseInterceptor): () => void };
   };
+  /** The client's response cache. Both calls do nothing when caching is off. */
+  cache: {
+    /** Removes every cached response. Call it when the user logs out. */
+    clear(): Promise<void>;
+    /**
+     * Removes the cached GET for this URL. Request interceptors run first, so a `cacheKey`
+     * that reads a header they add finds the same entry.
+     */
+    delete(url: string, options?: RequestOptions): Promise<void>;
+  };
 }
 
 export const DEFAULT_BREAKER: BreakerOptions = {
@@ -104,12 +114,17 @@ export function createHttp(options: ClientOptions = {}): HttpClient {
     return { ...DEFAULT_RETRY, ...(options.retry || {}), ...config.retry };
   }
 
-  // Runs after the request interceptors, so it sees the final URL and headers.
+  // The key a GET to this request's URL is stored under. Called after the request
+  // interceptors, so it sees the final URL and headers.
+  function keyFor(config: RequestConfig, url: string): string {
+    return options.cacheKey?.({ ...config, method: "GET" }, url) ?? url;
+  }
+
   async function send(config: RequestConfig): Promise<HttpResponse> {
     const url = buildUrl(config.baseUrl, config.url, config.query);
     const key =
       cache && (config.method ?? "GET") === "GET" && config.cache !== false
-        ? (options.cacheKey?.(config, url) ?? url)
+        ? keyFor(config, url)
         : undefined;
 
     if (cache && key !== undefined) {
@@ -180,6 +195,17 @@ export function createHttp(options: ClientOptions = {}): HttpClient {
     interceptors: {
       request: { use: (fn) => addTo(requestInterceptors, fn) },
       response: { use: (handlers) => addTo(responseInterceptors, handlers) },
+    },
+    cache: {
+      async clear() {
+        await cache?.clear();
+      },
+      async delete(url, opts) {
+        if (!cache) return;
+        let cfg = withDefaults({ ...opts, url, method: "GET" });
+        for (const fn of [...requestInterceptors]) cfg = await fn(cfg);
+        await cache.delete(keyFor(cfg, buildUrl(cfg.baseUrl, cfg.url, cfg.query)));
+      },
     },
   };
 }

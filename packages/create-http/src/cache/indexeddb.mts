@@ -61,5 +61,8 @@ export function indexedDbCache(dbName = "fast-http-client-cache"): CacheAdapter 
     async delete(key) {
       await run("readwrite", (s) => s.delete(key));
     },
+    async clear() {
+      await run("readwrite", (s) => s.clear());
+    },
   };
 }
