@@ -53,6 +53,10 @@ const server = http.createServer((req, res) => {
         return json(200, { n: hits[path] });
       case "/v1/no-store":
         return json(200, { n: hits[path] }, { "cache-control": "no-store" });
+      case "/v1/no-cache":
+        return json(200, { n: hits[path] }, { "cache-control": "no-cache" });
+      case "/v1/private":
+        return json(200, { n: hits[path] }, { "cache-control": "private, max-age=60" });
       case "/v1/empty":
         res.writeHead(204);
         return res.end();
@@ -221,6 +225,39 @@ describe("caching", () => {
     assert.equal((await keyed.get("/count", auth)).fromCache, true);
     const otherUser = await keyed.get("/count", { headers: { Authorization: "Bearer b" } });
     assert.equal(otherUser.fromCache, false);
+  });
+
+  test("treats Cookie and Proxy-Authorization like Authorization", async () => {
+    const api = createHttp({ baseUrl: base, cache: memoryCache() });
+    const credentials: Record<string, string>[] = [
+      { cookie: "sid=a" },
+      { "Proxy-Authorization": "Basic a" },
+    ];
+    for (const headers of credentials) {
+      await api.get("/count", { headers });
+      assert.equal((await api.get("/count", { headers })).fromCache, false);
+    }
+  });
+
+  test("a cacheKey that returns no key skips the cache instead of using the URL", async () => {
+    const api = createHttp({
+      baseUrl: base,
+      cache: memoryCache(),
+      cacheKey: () => undefined as unknown as string, // as a JavaScript caller could
+    });
+    await api.get("/count");
+    assert.equal((await api.get("/count")).fromCache, false);
+  });
+
+  test("doesn't store no-cache responses, or private ones without a cacheKey", async () => {
+    const plain = createHttp({ baseUrl: base, cache: memoryCache() });
+    for (const path of ["/no-cache", "/private"]) {
+      await plain.get(path);
+      assert.equal((await plain.get(path)).fromCache, false);
+    }
+    const keyed = createHttp({ baseUrl: base, cache: memoryCache(), cacheKey: (_c, url) => url });
+    await keyed.get("/private");
+    assert.equal((await keyed.get("/private")).fromCache, true);
   });
 
   test("doesn't cache no-store responses", async () => {

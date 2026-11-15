@@ -418,10 +418,12 @@ await api.get("/status", { circuitBreaker: false }); // bypass it for one reques
       <Section id="caching" title="Caching">
         <p>
           Caching is off until you choose a store. The client then caches <C>GET</C> responses. One
-          is stored only if its status is 200, it has no <C>Cache-Control: no-store</C>, its body is
-          JSON or text, and the request has no <C>Authorization</C> header, unless you set a{" "}
-          <C>cacheKey</C>. A cached response skips the network, retries and the breaker, still runs
-          your response interceptors, and comes back with <C>fromCache: true</C>.
+          is stored only if its status is 200, its body is JSON or text, its <C>Cache-Control</C>{" "}
+          has no <C>no-store</C> or <C>no-cache</C> (and no <C>private</C> without a <C>cacheKey</C>
+          ), and the request has no <C>Authorization</C>, <C>Cookie</C> or{" "}
+          <C>Proxy-Authorization</C> header unless you set a <C>cacheKey</C>. A cached response
+          skips the network, retries and the breaker, still runs your response interceptors, and
+          comes back with <C>fromCache: true</C>.
         </p>
         <p>
           Entries live for <C>cacheTtlMs</C>, 60 seconds by default. <C>max-age</C> and <C>ETag</C>{" "}
@@ -488,9 +490,10 @@ await localApi.get("/countries", { cacheTtlMs: 86_400_000 });`}
           <AlertDescription>
             This includes a browser cache. When one account logs out and another logs in on the same
             browser, a key of the URL alone serves the first account's data to the second. Requests
-            with an <C>Authorization</C> header aren't cached until <C>cacheKey</C> is set. Sessions
-            held in a cookie are invisible to the client, so for those, add the user's id to the key
-            yourself or leave caching off.
+            with credential headers aren't cached until <C>cacheKey</C> is set, and a{" "}
+            <C>cacheKey</C> that returns no key skips the cache rather than using the URL. Cookies
+            the browser attaches on its own are invisible to the client, so for a cookie session,
+            add the user's id to the key yourself or leave caching off.
           </AlertDescription>
         </Alert>
         <Code
@@ -660,7 +663,7 @@ api.interceptors.request.use((config) => ({
             [
               <C key="o">cacheKey</C>,
               <C key="t">{"(config, url) => string"}</C>,
-              "The full URL. Without one, requests with Authorization aren't cached",
+              "The full URL. Without one, requests with credentials aren't cached",
             ],
             [
               <C key="o">refreshAuth</C>,

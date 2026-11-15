@@ -254,9 +254,9 @@ A cancelled request doesn't count either way.
 Caching is off until you choose a store. The client can then cache `GET` responses. A response is stored only if:
 
 - the status is 200,
-- it has no `Cache-Control: no-store`,
+- its `Cache-Control` has no `no-store` or `no-cache`, and no `private` unless you set a `cacheKey`,
 - its body is JSON or text (`Blob` bodies are never cached), and
-- the request has no `Authorization` header, unless you set a [`cacheKey`](#cache-keys-and-signed-in-users).
+- the request has no `Authorization`, `Cookie` or `Proxy-Authorization` header, unless you set a [`cacheKey`](#cache-keys-and-signed-in-users).
 
 A cached response skips the network, the retries and the breaker, but still runs your response interceptors. It comes back with `fromCache: true`.
 
@@ -311,7 +311,7 @@ const api = createHttp({
 });
 ```
 
-Requests with an `Authorization` header are not cached at all until `cacheKey` is set. Sessions held in a cookie are invisible to the client, so for those, put the user's id in the key yourself, or leave caching off.
+Requests with an `Authorization`, `Cookie` or `Proxy-Authorization` header are not cached at all until `cacheKey` is set. If `cacheKey` returns no key, the request isn't cached; it never falls back to the URL. Cookies the browser attaches on its own are invisible to the client, so for a cookie session, put the user's id in the key yourself, or leave caching off.
 
 ### Clearing the cache
 
@@ -431,7 +431,7 @@ cache lookup ──────────────── GET only; a hit sk
 │ retryable failure → wait (backoff or Retry-After) → again │
 └───────────────────────────────────────────────────────────┘
   ▼
-cache store ───────────────── GET: 200, not no-store, JSON or text
+cache store ───────────────── GET: 200, cacheable Cache-Control, JSON or text
                               other methods: drop the cached GET for this URL
   ▼
 response interceptors ─────── in order; can transform or recover
@@ -454,7 +454,7 @@ HttpResponse<T>  or  thrown error
 | `circuitBreaker` | `false \| Partial<BreakerOptions>` | `DEFAULT_BREAKER` |
 | `cache` | `false \| "memory" \| "indexeddb" \| CacheAdapter` | off |
 | `cacheTtlMs` | `number` | `60000` |
-| `cacheKey` | `(config: RequestConfig, url: string) => string` | the full URL; requests with `Authorization` aren't cached without one |
+| `cacheKey` | `(config: RequestConfig, url: string) => string` | the full URL; requests with credentials aren't cached without one |
 | `refreshAuth` | `() => Promise<void>` | none (a `401` is just an error) |
 
 ### Exports

@@ -88,6 +88,13 @@ export const DEFAULT_BREAKER: BreakerOptions = {
 
 const DEFAULT_CACHE_TTL_MS = 60_000;
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const CREDENTIAL_HEADERS = new Set(["authorization", "proxy-authorization", "cookie"]);
+
+function hasCredentials(config: RequestConfig): boolean {
+  return Object.keys(config.headers ?? {}).some((name) =>
+    CREDENTIAL_HEADERS.has(name.toLowerCase()),
+  );
+}
 
 export function createHttp(options: ClientOptions = {}): HttpClient {
   const requestInterceptors: RequestInterceptor[] = [];
@@ -123,26 +130,21 @@ export function createHttp(options: ClientOptions = {}): HttpClient {
   // interceptors, so it sees the final URL and headers. For a write it gets the write's own
   // config with the method set to GET: a cacheKey that reads the body or a header only the
   // write sends won't find the GET's entry.
-  function keyFor(config: RequestConfig, url: string): string {
-    return options.cacheKey?.({ ...config, method: "GET" }, url) ?? url;
-  }
-
-  // A request with credentials gets a response meant for one user. Keyed by URL alone it
-  // would be served to whoever asks next, so it's only cached under a cacheKey.
-  function cacheable(config: RequestConfig): boolean {
-    if (options.cacheKey) return true;
-    return !Object.keys(config.headers ?? {}).some(
-      (name) => name.toLowerCase() === "authorization",
-    );
+  //
+  // undefined means "don't cache". A request with credentials gets a response meant for one
+  // user; keyed by URL alone it would be served to whoever asks next, so it's only cached
+  // under a cacheKey. A cacheKey that returns no key never falls back to the URL.
+  function keyFor(config: RequestConfig, url: string): string | undefined {
+    if (!options.cacheKey) return hasCredentials(config) ? undefined : url;
+    const key: unknown = options.cacheKey({ ...config, method: "GET" }, url);
+    return typeof key === "string" && key !== "" ? key : undefined;
   }
 
   async function send(config: RequestConfig): Promise<HttpResponse> {
     const url = buildUrl(config.baseUrl, config.url, config.query);
     const method = config.method ?? "GET";
     const key =
-      cache && method === "GET" && config.cache !== false && cacheable(config)
-        ? keyFor(config, url)
-        : undefined;
+      cache && method === "GET" && config.cache !== false ? keyFor(config, url) : undefined;
 
     if (cache && key !== undefined) {
       const hit = await cache.get(key).catch(() => undefined); // a broken cache never fails a request
@@ -158,15 +160,19 @@ export function createHttp(options: ClientOptions = {}): HttpClient {
     // fails, clear everything rather than leave stale data to be served.
     if (cache && !SAFE_METHODS.has(method)) {
       writes++;
-      await cache
-        .delete(keyFor(config, url))
-        .catch(() => cache.clear())
-        .catch(() => {});
+      const stale = keyFor(config, url);
+      if (stale !== undefined) {
+        await cache
+          .delete(stale)
+          .catch(() => cache.clear())
+          .catch(() => {});
+      }
     }
 
     // A GET whose response may predate a write that finished meanwhile isn't stored.
     if (cache && key !== undefined && writes === writesBefore) {
-      const entry = toEntry(res);
+      // `private` means for one user only, which only a cacheKey can promise.
+      const entry = toEntry(res, options.cacheKey !== undefined);
       if (entry) {
         const ttl = config.cacheTtlMs ?? options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
         cache.set(key, entry, ttl).catch(() => {});
@@ -234,7 +240,8 @@ export function createHttp(options: ClientOptions = {}): HttpClient {
         if (!cache) return;
         let cfg = withDefaults({ ...opts, url, method: "GET" });
         for (const fn of [...requestInterceptors]) cfg = await fn(cfg);
-        await cache.delete(keyFor(cfg, buildUrl(cfg.baseUrl, cfg.url, cfg.query)));
+        const key = keyFor(cfg, buildUrl(cfg.baseUrl, cfg.url, cfg.query));
+        if (key !== undefined) await cache.delete(key);
       },
     },
   };
@@ -256,9 +263,12 @@ function mergeHeaders(...sources: (Record<string, string> | undefined)[]): Recor
   return out;
 }
 
-function toEntry(res: HttpResponse): CacheEntry | undefined {
+function toEntry(res: HttpResponse, allowPrivate: boolean): CacheEntry | undefined {
   if (res.status !== 200) return undefined;
-  if (/\bno-store\b/i.test(res.headers.get("cache-control") ?? "")) return undefined;
+  const control = res.headers.get("cache-control") ?? "";
+  // no-cache means "ask the server before reusing", which this cache never does.
+  if (/\bno-(store|cache)\b/i.test(control)) return undefined;
+  if (!allowPrivate && /\bprivate\b/i.test(control)) return undefined;
   if (res.data === undefined || res.data instanceof Blob) return undefined; // only JSON and text
   return {
     status: res.status,
