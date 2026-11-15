@@ -199,6 +199,29 @@ describe("caching", () => {
     assert.deepEqual(bypass.data, { n: 2 });
   });
 
+  test("is off unless a cache is chosen", async () => {
+    const api = createHttp({ baseUrl: base });
+    await api.get("/count");
+    assert.equal((await api.get("/count")).fromCache, false);
+  });
+
+  test("doesn't cache requests with an Authorization header unless cacheKey is set", async () => {
+    const auth = { headers: { Authorization: "Bearer a" } };
+    const plain = createHttp({ baseUrl: base, cache: memoryCache() });
+    await plain.get("/count", auth);
+    assert.equal((await plain.get("/count", auth)).fromCache, false);
+
+    const keyed = createHttp({
+      baseUrl: base,
+      cache: memoryCache(),
+      cacheKey: (config, url) => `${config.headers?.authorization ?? "anon"} ${url}`,
+    });
+    await keyed.get("/count", auth);
+    assert.equal((await keyed.get("/count", auth)).fromCache, true);
+    const otherUser = await keyed.get("/count", { headers: { Authorization: "Bearer b" } });
+    assert.equal(otherUser.fromCache, false);
+  });
+
   test("doesn't cache no-store responses", async () => {
     const api = createHttp({ baseUrl: base, cache: memoryCache() });
     await api.get("/no-store");

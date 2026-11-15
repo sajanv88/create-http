@@ -25,11 +25,14 @@ export interface ClientOptions {
   retry?: false | Partial<RetryOptions>;
   /** `false` turns the per-origin circuit breaker off; an object overrides `DEFAULT_BREAKER`. */
   circuitBreaker?: false | Partial<BreakerOptions>;
-  /** Where GET responses are cached. Default: IndexedDB in browsers, off in Node. */
+  /** Where GET responses are cached. Default: off. */
   cache?: CacheOptions;
   /** How long a cached response stays fresh, in ms. Default 60 000. */
   cacheTtlMs?: number;
-  /** Cache key for a request. Default: the full URL. Include the user for a shared cache. */
+  /**
+   * Cache key for a request. Default: the full URL. Requests with an `Authorization` header
+   * are only cached when this is set, so the key can say whose response it is.
+   */
   cacheKey?: (config: RequestConfig, url: string) => string;
   /** Called once on a 401; the request is then sent again a single time. */
   refreshAuth?: () => Promise<void>;
@@ -121,11 +124,22 @@ export function createHttp(options: ClientOptions = {}): HttpClient {
     return options.cacheKey?.({ ...config, method: "GET" }, url) ?? url;
   }
 
+  // A request with credentials gets a response meant for one user. Keyed by URL alone it
+  // would be served to whoever asks next, so it's only cached under a cacheKey.
+  function cacheable(config: RequestConfig): boolean {
+    if (options.cacheKey) return true;
+    return !Object.keys(config.headers ?? {}).some(
+      (name) => name.toLowerCase() === "authorization",
+    );
+  }
+
   async function send(config: RequestConfig): Promise<HttpResponse> {
     const url = buildUrl(config.baseUrl, config.url, config.query);
     const method = config.method ?? "GET";
     const key =
-      cache && method === "GET" && config.cache !== false ? keyFor(config, url) : undefined;
+      cache && method === "GET" && config.cache !== false && cacheable(config)
+        ? keyFor(config, url)
+        : undefined;
 
     if (cache && key !== undefined) {
       const hit = await cache.get(key).catch(() => undefined); // a broken cache never fails a request
