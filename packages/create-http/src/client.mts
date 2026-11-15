@@ -130,21 +130,26 @@ export function createHttp(options: ClientOptions = {}): HttpClient {
   // interceptors, so it sees the final URL and headers. For a write it gets the write's own
   // config with the method set to GET: a cacheKey that reads the body or a header only the
   // write sends won't find the GET's entry.
-  //
-  // undefined means "don't cache". A request with credentials gets a response meant for one
-  // user; keyed by URL alone it would be served to whoever asks next, so it's only cached
-  // under a cacheKey. A cacheKey that returns no key never falls back to the URL.
-  function keyFor(config: RequestConfig, url: string): string | undefined {
-    if (!options.cacheKey) return hasCredentials(config) ? undefined : url;
+  // undefined when a cacheKey returns no key; it never falls back to the URL.
+  function entryKey(config: RequestConfig, url: string): string | undefined {
+    if (!options.cacheKey) return url;
     const key: unknown = options.cacheKey({ ...config, method: "GET" }, url);
     return typeof key === "string" && key !== "" ? key : undefined;
+  }
+
+  // The key to read and store a GET under, or undefined for "don't cache". A request with
+  // credentials gets a response meant for one user; keyed by URL alone it would be served to
+  // whoever asks next, so it's only cached under a cacheKey. This limits storing, never
+  // invalidation: a write with credentials still clears the entry a public GET left.
+  function storeKeyFor(config: RequestConfig, url: string): string | undefined {
+    return !options.cacheKey && hasCredentials(config) ? undefined : entryKey(config, url);
   }
 
   async function send(config: RequestConfig): Promise<HttpResponse> {
     const url = buildUrl(config.baseUrl, config.url, config.query);
     const method = config.method ?? "GET";
     const key =
-      cache && method === "GET" && config.cache !== false ? keyFor(config, url) : undefined;
+      cache && method === "GET" && config.cache !== false ? storeKeyFor(config, url) : undefined;
 
     if (cache && key !== undefined) {
       const hit = await cache.get(key).catch(() => undefined); // a broken cache never fails a request
@@ -160,13 +165,11 @@ export function createHttp(options: ClientOptions = {}): HttpClient {
     // fails, clear everything rather than leave stale data to be served.
     if (cache && !SAFE_METHODS.has(method)) {
       writes++;
-      const stale = keyFor(config, url);
-      if (stale !== undefined) {
-        await cache
-          .delete(stale)
-          .catch(() => cache.clear())
-          .catch(() => {});
-      }
+      // No key means the stale entry can't be found, so everything goes.
+      const stale = entryKey(config, url);
+      await (stale === undefined ? cache.clear() : cache.delete(stale))
+        .catch(() => cache.clear())
+        .catch(() => {});
     }
 
     // A GET whose response may predate a write that finished meanwhile isn't stored.
@@ -240,7 +243,7 @@ export function createHttp(options: ClientOptions = {}): HttpClient {
         if (!cache) return;
         let cfg = withDefaults({ ...opts, url, method: "GET" });
         for (const fn of [...requestInterceptors]) cfg = await fn(cfg);
-        const key = keyFor(cfg, buildUrl(cfg.baseUrl, cfg.url, cfg.query));
+        const key = entryKey(cfg, buildUrl(cfg.baseUrl, cfg.url, cfg.query));
         if (key !== undefined) await cache.delete(key);
       },
     },

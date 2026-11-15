@@ -314,6 +314,28 @@ describe("caching", () => {
     assert.equal(next.data.name, "Grace");
   });
 
+  test("a write with credentials still drops the cached public GET", async () => {
+    const api = createHttp({ baseUrl: base, cache: memoryCache() });
+    profileName = "Ada";
+    await api.get("/profile"); // no credentials, so cached under the URL
+    await api.put("/profile", { name: "Grace" }, { headers: { Authorization: "Bearer a" } });
+    const after = await api.get<{ name: string }>("/profile");
+    assert.equal(after.fromCache, false);
+    assert.equal(after.data.name, "Grace");
+  });
+
+  test("a write whose cacheKey gives no key clears the whole cache", async () => {
+    const api = createHttp({
+      baseUrl: base,
+      cache: memoryCache(),
+      cacheKey: (config, url) =>
+        (config.headers?.["x-user"] ?? "") && `${config.headers?.["x-user"]} ${url}`,
+    });
+    await api.get("/count", { headers: { "x-user": "a" } });
+    await api.put("/profile", { name: "Grace" }); // no x-user, so no key to find
+    assert.equal((await api.get("/count", { headers: { "x-user": "a" } })).fromCache, false);
+  });
+
   test("a failed write leaves the cache alone", async () => {
     const api = createHttp({ baseUrl: base, cache: memoryCache() });
     profileName = "Ada";
