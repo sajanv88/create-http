@@ -84,6 +84,7 @@ export const DEFAULT_BREAKER: BreakerOptions = {
 };
 
 const DEFAULT_CACHE_TTL_MS = 60_000;
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 export function createHttp(options: ClientOptions = {}): HttpClient {
   const requestInterceptors: RequestInterceptor[] = [];
@@ -122,10 +123,9 @@ export function createHttp(options: ClientOptions = {}): HttpClient {
 
   async function send(config: RequestConfig): Promise<HttpResponse> {
     const url = buildUrl(config.baseUrl, config.url, config.query);
+    const method = config.method ?? "GET";
     const key =
-      cache && (config.method ?? "GET") === "GET" && config.cache !== false
-        ? keyFor(config, url)
-        : undefined;
+      cache && method === "GET" && config.cache !== false ? keyFor(config, url) : undefined;
 
     if (cache && key !== undefined) {
       const hit = await cache.get(key).catch(() => undefined); // a broken cache never fails a request
@@ -134,6 +134,12 @@ export function createHttp(options: ClientOptions = {}): HttpClient {
 
     const breaker = breakers && config.circuitBreaker !== false ? breakers.forUrl(url) : undefined;
     const res = await sendWithResilience(config, attemptOnce, breaker, retryFor(config));
+
+    // A write that succeeded makes the cached GET for its URL stale (RFC 9111, section 4.4).
+    // Awaited, so a GET sent right after the write can't read the old entry.
+    if (cache && !SAFE_METHODS.has(method)) {
+      await cache.delete(keyFor(config, url)).catch(() => {});
+    }
 
     if (cache && key !== undefined) {
       const entry = toEntry(res);

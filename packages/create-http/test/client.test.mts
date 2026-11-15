@@ -27,6 +27,7 @@ interface Echo {
 let base = "";
 let hits: Record<string, number> = {};
 let validToken = "new";
+let profileName = "Ada";
 
 const server = http.createServer((req, res) => {
   const path = new URL(req.url ?? "/", "http://x").pathname;
@@ -64,6 +65,13 @@ const server = http.createServer((req, res) => {
         return req.headers.authorization === `Bearer ${validToken}`
           ? json(200, { me: true })
           : json(401, { error: "unauthorized" });
+      case "/v1/profile":
+        if (req.method === "PUT") {
+          const { name } = JSON.parse(raw) as { name: string };
+          if (!name) return json(422, { error: "name is required" });
+          profileName = name;
+        }
+        return json(200, { name: profileName });
       case "/v1/slow":
         return setTimeout(() => json(200, {}), 300);
       default:
@@ -219,6 +227,26 @@ describe("caching", () => {
     await cache.set("c", entry("3"), 10_000);
     assert.equal(await cache.get("b"), undefined);
     assert.ok(await cache.get("a"));
+  });
+
+  test("a successful write drops the cached GET for its URL", async () => {
+    const api = createHttp({ baseUrl: base, cache: memoryCache() });
+    profileName = "Ada";
+    await api.get("/profile");
+    await api.get("/count");
+    await api.put("/profile", { name: "Grace" });
+    const after = await api.get<{ name: string }>("/profile");
+    assert.equal(after.fromCache, false);
+    assert.equal(after.data.name, "Grace");
+    assert.equal((await api.get("/count")).fromCache, true); // other URLs stay cached
+  });
+
+  test("a failed write leaves the cache alone", async () => {
+    const api = createHttp({ baseUrl: base, cache: memoryCache() });
+    profileName = "Ada";
+    await api.get("/profile");
+    await assert.rejects(api.put("/profile", { name: "" }), HttpError);
+    assert.equal((await api.get("/profile")).fromCache, true);
   });
 
   test("client.cache.clear() drops every entry", async () => {
