@@ -25,11 +25,14 @@ export interface ClientOptions {
   retry?: false | Partial<RetryOptions>;
   /** `false` turns the per-origin circuit breaker off; an object overrides `DEFAULT_BREAKER`. */
   circuitBreaker?: false | Partial<BreakerOptions>;
-  /** Where GET responses are cached. Default: IndexedDB in browsers, off in Node. */
+  /** Where GET responses are cached. Default: off. */
   cache?: CacheOptions;
   /** How long a cached response stays fresh, in ms. Default 60 000. */
   cacheTtlMs?: number;
-  /** Cache key for a request. Default: the full URL. Include the user for a shared cache. */
+  /**
+   * Cache key for a request. Default: the full URL. Requests with an `Authorization` header
+   * are only cached when this is set, so the key can say whose response it is.
+   */
   cacheKey?: (config: RequestConfig, url: string) => string;
   /** Called once on a 401; the request is then sent again a single time. */
   refreshAuth?: () => Promise<void>;
@@ -61,6 +64,16 @@ export interface HttpClient {
     /** Returns a function that removes the interceptor. */
     response: { use(handlers: ResponseInterceptor): () => void };
   };
+  /** The client's response cache. Both calls do nothing when caching is off. */
+  cache: {
+    /** Removes every cached response. Call it when the user logs out. */
+    clear(): Promise<void>;
+    /**
+     * Removes the cached GET for this URL. Request interceptors run first, so a `cacheKey`
+     * that reads a header they add finds the same entry.
+     */
+    delete(url: string, options?: RequestOptions): Promise<void>;
+  };
 }
 
 export const DEFAULT_BREAKER: BreakerOptions = {
@@ -74,6 +87,14 @@ export const DEFAULT_BREAKER: BreakerOptions = {
 };
 
 const DEFAULT_CACHE_TTL_MS = 60_000;
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const CREDENTIAL_HEADERS = new Set(["authorization", "proxy-authorization", "cookie"]);
+
+function hasCredentials(config: RequestConfig): boolean {
+  return Object.keys(config.headers ?? {}).some((name) =>
+    CREDENTIAL_HEADERS.has(name.toLowerCase()),
+  );
+}
 
 export function createHttp(options: ClientOptions = {}): HttpClient {
   const requestInterceptors: RequestInterceptor[] = [];
@@ -84,6 +105,7 @@ export function createHttp(options: ClientOptions = {}): HttpClient {
       ? undefined
       : new BreakerRegistry({ ...DEFAULT_BREAKER, ...options.circuitBreaker });
   let refreshing: Promise<void> | undefined;
+  let writes = 0; // successful writes so far; a GET that overlapped one doesn't store its response
 
   function withDefaults(config: RequestConfig): RequestConfig {
     const merged: RequestConfig = {
@@ -104,13 +126,30 @@ export function createHttp(options: ClientOptions = {}): HttpClient {
     return { ...DEFAULT_RETRY, ...(options.retry || {}), ...config.retry };
   }
 
-  // Runs after the request interceptors, so it sees the final URL and headers.
+  // The key a GET to this request's URL is stored under. Called after the request
+  // interceptors, so it sees the final URL and headers. For a write it gets the write's own
+  // config with the method set to GET: a cacheKey that reads the body or a header only the
+  // write sends won't find the GET's entry.
+  // undefined when a cacheKey returns no key; it never falls back to the URL.
+  function entryKey(config: RequestConfig, url: string): string | undefined {
+    if (!options.cacheKey) return url;
+    const key: unknown = options.cacheKey({ ...config, method: "GET" }, url);
+    return typeof key === "string" && key !== "" ? key : undefined;
+  }
+
+  // The key to read and store a GET under, or undefined for "don't cache". A request with
+  // credentials gets a response meant for one user; keyed by URL alone it would be served to
+  // whoever asks next, so it's only cached under a cacheKey. This limits storing, never
+  // invalidation: a write with credentials still clears the entry a public GET left.
+  function storeKeyFor(config: RequestConfig, url: string): string | undefined {
+    return !options.cacheKey && hasCredentials(config) ? undefined : entryKey(config, url);
+  }
+
   async function send(config: RequestConfig): Promise<HttpResponse> {
     const url = buildUrl(config.baseUrl, config.url, config.query);
+    const method = config.method ?? "GET";
     const key =
-      cache && (config.method ?? "GET") === "GET" && config.cache !== false
-        ? (options.cacheKey?.(config, url) ?? url)
-        : undefined;
+      cache && method === "GET" && config.cache !== false ? storeKeyFor(config, url) : undefined;
 
     if (cache && key !== undefined) {
       const hit = await cache.get(key).catch(() => undefined); // a broken cache never fails a request
@@ -118,10 +157,25 @@ export function createHttp(options: ClientOptions = {}): HttpClient {
     }
 
     const breaker = breakers && config.circuitBreaker !== false ? breakers.forUrl(url) : undefined;
+    const writesBefore = writes;
     const res = await sendWithResilience(config, attemptOnce, breaker, retryFor(config));
 
-    if (cache && key !== undefined) {
-      const entry = toEntry(res);
+    // A write that succeeded makes the cached GET for its URL stale (RFC 9111, section 4.4).
+    // Awaited, so a GET sent right after the write can't read the old entry. If the delete
+    // fails, clear everything rather than leave stale data to be served.
+    if (cache && !SAFE_METHODS.has(method)) {
+      writes++;
+      // No key means the stale entry can't be found, so everything goes.
+      const stale = entryKey(config, url);
+      await (stale === undefined ? cache.clear() : cache.delete(stale))
+        .catch(() => cache.clear())
+        .catch(() => {});
+    }
+
+    // A GET whose response may predate a write that finished meanwhile isn't stored.
+    if (cache && key !== undefined && writes === writesBefore) {
+      // `private` means for one user only, which only a cacheKey can promise.
+      const entry = toEntry(res, options.cacheKey !== undefined);
       if (entry) {
         const ttl = config.cacheTtlMs ?? options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
         cache.set(key, entry, ttl).catch(() => {});
@@ -181,6 +235,18 @@ export function createHttp(options: ClientOptions = {}): HttpClient {
       request: { use: (fn) => addTo(requestInterceptors, fn) },
       response: { use: (handlers) => addTo(responseInterceptors, handlers) },
     },
+    cache: {
+      async clear() {
+        await cache?.clear();
+      },
+      async delete(url, opts) {
+        if (!cache) return;
+        let cfg = withDefaults({ ...opts, url, method: "GET" });
+        for (const fn of [...requestInterceptors]) cfg = await fn(cfg);
+        const key = entryKey(cfg, buildUrl(cfg.baseUrl, cfg.url, cfg.query));
+        if (key !== undefined) await cache.delete(key);
+      },
+    },
   };
 }
 
@@ -200,9 +266,12 @@ function mergeHeaders(...sources: (Record<string, string> | undefined)[]): Recor
   return out;
 }
 
-function toEntry(res: HttpResponse): CacheEntry | undefined {
+function toEntry(res: HttpResponse, allowPrivate: boolean): CacheEntry | undefined {
   if (res.status !== 200) return undefined;
-  if (/\bno-store\b/i.test(res.headers.get("cache-control") ?? "")) return undefined;
+  const control = res.headers.get("cache-control") ?? "";
+  // no-cache means "ask the server before reusing", which this cache never does.
+  if (/\bno-(store|cache)\b/i.test(control)) return undefined;
+  if (!allowPrivate && /\bprivate\b/i.test(control)) return undefined;
   if (res.data === undefined || res.data instanceof Blob) return undefined; // only JSON and text
   return {
     status: res.status,

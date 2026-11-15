@@ -11,7 +11,9 @@ import {
   HttpError,
   type HttpResponse,
   memoryCache,
+  type RedisLike,
   type RetryOptions,
+  redisCache,
 } from "fast-http-client";
 
 /** What the /echo route sends back. */
@@ -25,6 +27,7 @@ interface Echo {
 let base = "";
 let hits: Record<string, number> = {};
 let validToken = "new";
+let profileName = "Ada";
 
 const server = http.createServer((req, res) => {
   const path = new URL(req.url ?? "/", "http://x").pathname;
@@ -50,6 +53,10 @@ const server = http.createServer((req, res) => {
         return json(200, { n: hits[path] });
       case "/v1/no-store":
         return json(200, { n: hits[path] }, { "cache-control": "no-store" });
+      case "/v1/no-cache":
+        return json(200, { n: hits[path] }, { "cache-control": "no-cache" });
+      case "/v1/private":
+        return json(200, { n: hits[path] }, { "cache-control": "private, max-age=60" });
       case "/v1/empty":
         res.writeHead(204);
         return res.end();
@@ -62,6 +69,14 @@ const server = http.createServer((req, res) => {
         return req.headers.authorization === `Bearer ${validToken}`
           ? json(200, { me: true })
           : json(401, { error: "unauthorized" });
+      case "/v1/profile":
+        if (req.method === "PUT") {
+          const { name } = JSON.parse(raw) as { name: string };
+          if (!name) return json(422, { error: "name is required" });
+          profileName = name;
+        }
+        // x-delay holds the answer back, as a slow server would, with the name read on arrival.
+        return setTimeout(json, Number(req.headers["x-delay"] ?? 0), 200, { name: profileName });
       case "/v1/slow":
         return setTimeout(() => json(200, {}), 300);
       default:
@@ -189,6 +204,62 @@ describe("caching", () => {
     assert.deepEqual(bypass.data, { n: 2 });
   });
 
+  test("is off unless a cache is chosen", async () => {
+    const api = createHttp({ baseUrl: base });
+    await api.get("/count");
+    assert.equal((await api.get("/count")).fromCache, false);
+  });
+
+  test("doesn't cache requests with an Authorization header unless cacheKey is set", async () => {
+    const auth = { headers: { Authorization: "Bearer a" } };
+    const plain = createHttp({ baseUrl: base, cache: memoryCache() });
+    await plain.get("/count", auth);
+    assert.equal((await plain.get("/count", auth)).fromCache, false);
+
+    const keyed = createHttp({
+      baseUrl: base,
+      cache: memoryCache(),
+      cacheKey: (config, url) => `${config.headers?.authorization ?? "anon"} ${url}`,
+    });
+    await keyed.get("/count", auth);
+    assert.equal((await keyed.get("/count", auth)).fromCache, true);
+    const otherUser = await keyed.get("/count", { headers: { Authorization: "Bearer b" } });
+    assert.equal(otherUser.fromCache, false);
+  });
+
+  test("treats Cookie and Proxy-Authorization like Authorization", async () => {
+    const api = createHttp({ baseUrl: base, cache: memoryCache() });
+    const credentials: Record<string, string>[] = [
+      { cookie: "sid=a" },
+      { "Proxy-Authorization": "Basic a" },
+    ];
+    for (const headers of credentials) {
+      await api.get("/count", { headers });
+      assert.equal((await api.get("/count", { headers })).fromCache, false);
+    }
+  });
+
+  test("a cacheKey that returns no key skips the cache instead of using the URL", async () => {
+    const api = createHttp({
+      baseUrl: base,
+      cache: memoryCache(),
+      cacheKey: () => undefined as unknown as string, // as a JavaScript caller could
+    });
+    await api.get("/count");
+    assert.equal((await api.get("/count")).fromCache, false);
+  });
+
+  test("doesn't store no-cache responses, or private ones without a cacheKey", async () => {
+    const plain = createHttp({ baseUrl: base, cache: memoryCache() });
+    for (const path of ["/no-cache", "/private"]) {
+      await plain.get(path);
+      assert.equal((await plain.get(path)).fromCache, false);
+    }
+    const keyed = createHttp({ baseUrl: base, cache: memoryCache(), cacheKey: (_c, url) => url });
+    await keyed.get("/private");
+    assert.equal((await keyed.get("/private")).fromCache, true);
+  });
+
   test("doesn't cache no-store responses", async () => {
     const api = createHttp({ baseUrl: base, cache: memoryCache() });
     await api.get("/no-store");
@@ -217,6 +288,110 @@ describe("caching", () => {
     await cache.set("c", entry("3"), 10_000);
     assert.equal(await cache.get("b"), undefined);
     assert.ok(await cache.get("a"));
+  });
+
+  test("a successful write drops the cached GET for its URL", async () => {
+    const api = createHttp({ baseUrl: base, cache: memoryCache() });
+    profileName = "Ada";
+    await api.get("/profile");
+    await api.get("/count");
+    await api.put("/profile", { name: "Grace" });
+    const after = await api.get<{ name: string }>("/profile");
+    assert.equal(after.fromCache, false);
+    assert.equal(after.data.name, "Grace");
+    assert.equal((await api.get("/count")).fromCache, true); // other URLs stay cached
+  });
+
+  test("a GET that overlaps a write doesn't store what may be stale", async () => {
+    const api = createHttp({ baseUrl: base, cache: memoryCache() });
+    profileName = "Ada";
+    const slowRead = api.get<{ name: string }>("/profile", { headers: { "x-delay": "50" } }); // reads Ada now
+    await new Promise((resolve) => setTimeout(resolve, 10)); // let it reach the server
+    await api.put("/profile", { name: "Grace" });
+    assert.equal((await slowRead).data.name, "Ada");
+    const next = await api.get<{ name: string }>("/profile");
+    assert.equal(next.fromCache, false);
+    assert.equal(next.data.name, "Grace");
+  });
+
+  test("a write with credentials still drops the cached public GET", async () => {
+    const api = createHttp({ baseUrl: base, cache: memoryCache() });
+    profileName = "Ada";
+    await api.get("/profile"); // no credentials, so cached under the URL
+    await api.put("/profile", { name: "Grace" }, { headers: { Authorization: "Bearer a" } });
+    const after = await api.get<{ name: string }>("/profile");
+    assert.equal(after.fromCache, false);
+    assert.equal(after.data.name, "Grace");
+  });
+
+  test("a write whose cacheKey gives no key clears the whole cache", async () => {
+    const api = createHttp({
+      baseUrl: base,
+      cache: memoryCache(),
+      cacheKey: (config, url) =>
+        (config.headers?.["x-user"] ?? "") && `${config.headers?.["x-user"]} ${url}`,
+    });
+    await api.get("/count", { headers: { "x-user": "a" } });
+    await api.put("/profile", { name: "Grace" }); // no x-user, so no key to find
+    assert.equal((await api.get("/count", { headers: { "x-user": "a" } })).fromCache, false);
+  });
+
+  test("a failed write leaves the cache alone", async () => {
+    const api = createHttp({ baseUrl: base, cache: memoryCache() });
+    profileName = "Ada";
+    await api.get("/profile");
+    await assert.rejects(api.put("/profile", { name: "" }), HttpError);
+    assert.equal((await api.get("/profile")).fromCache, true);
+  });
+
+  test("client.cache.clear() drops every entry", async () => {
+    const api = createHttp({ baseUrl: base, cache: memoryCache() });
+    await api.get("/count");
+    await api.get("/echo");
+    await api.cache.clear();
+    assert.equal((await api.get("/count")).fromCache, false);
+    assert.equal((await api.get("/echo")).fromCache, false);
+  });
+
+  test("client.cache.delete() drops one URL, keyed the way a GET would be", async () => {
+    const api = createHttp({
+      baseUrl: base,
+      cache: memoryCache(),
+      cacheKey: (config, url) => `${config.headers?.authorization}:${url}`,
+    });
+    api.interceptors.request.use((config) => ({
+      ...config,
+      headers: { ...config.headers, authorization: "Bearer a" },
+    }));
+    await api.get("/count");
+    await api.get("/echo");
+    await api.cache.delete("/count");
+    assert.equal((await api.get("/count")).fromCache, false);
+    assert.equal((await api.get("/echo")).fromCache, true);
+  });
+
+  test("redisCache.clear() deletes only keys under its prefix", async () => {
+    const data = new Map<string, string>([["other", "keep"]]);
+    const redis: RedisLike = {
+      async get(key) {
+        return data.get(key) ?? null;
+      },
+      async set(key, value) {
+        data.set(key, value);
+      },
+      async del(...keys) {
+        for (const key of keys) data.delete(key);
+      },
+      async scan(_cursor, _match, pattern) {
+        const prefix = pattern.slice(0, -1).replace(/\\(.)/g, "$1"); // undo the glob escaping
+        return ["0", [...data.keys()].filter((key) => key.startsWith(prefix))];
+      },
+    };
+    const cache = redisCache(redis, "api[1]:");
+    await cache.set("a", { status: 200, headers: [], body: "1", storeAt: 0 }, 10_000);
+    await cache.clear();
+    assert.deepEqual([...data.keys()], ["other"]);
+    await assert.rejects(redisCache(redis, "").clear(), /needs a prefix/);
   });
 });
 

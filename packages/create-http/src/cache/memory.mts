@@ -23,5 +23,8 @@ export function memoryCache(maxEntries = 500): CacheAdapter {
     async delete(key) {
       store.delete(key);
     },
+    async clear() {
+      store.clear();
+    },
   };
 }

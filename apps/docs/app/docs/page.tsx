@@ -26,6 +26,7 @@ const contents: TableOfContentsItem[] = [
   { id: "caching", title: "Caching" },
   { id: "cache-stores", title: "Choosing a store", depth: 2 },
   { id: "cache-keys", title: "Cache keys and users", depth: 2 },
+  { id: "cache-clear", title: "Clearing the cache", depth: 2 },
   { id: "custom-store", title: "Your own store", depth: 2 },
   { id: "interceptors", title: "Interceptors" },
   { id: "token-refresh", title: "Refreshing a token" },
@@ -416,14 +417,22 @@ await api.get("/status", { circuitBreaker: false }); // bypass it for one reques
 
       <Section id="caching" title="Caching">
         <p>
-          The client can cache <C>GET</C> responses. One is stored only if its status is 200, it has
-          no <C>Cache-Control: no-store</C>, and its body is JSON or text. A cached response skips
-          the network, retries and the breaker, still runs your response interceptors, and comes
-          back with <C>fromCache: true</C>.
+          Caching is off until you choose a store. The client then caches <C>GET</C> responses. One
+          is stored only if its status is 200, its body is JSON or text, its <C>Cache-Control</C>{" "}
+          has no <C>no-store</C> or <C>no-cache</C> (and no <C>private</C> without a <C>cacheKey</C>
+          ), and the request has no <C>Authorization</C>, <C>Cookie</C> or{" "}
+          <C>Proxy-Authorization</C> header unless you set a <C>cacheKey</C>. A cached response
+          skips the network, retries and the breaker, still runs your response interceptors, and
+          comes back with <C>fromCache: true</C>.
         </p>
         <p>
           Entries live for <C>cacheTtlMs</C>, 60 seconds by default. <C>max-age</C> and <C>ETag</C>{" "}
           aren't read; the TTL is the only rule.
+        </p>
+        <p>
+          A <C>PUT</C>, <C>PATCH</C>, <C>POST</C> or <C>DELETE</C> that succeeds removes the cached{" "}
+          <C>GET</C> for the same URL before it resolves, so the next read goes to the server. Only
+          that exact URL is removed: <C>/users/1?fields=name</C> keeps its entry until it expires.
         </p>
 
         <Subheading id="cache-stores">Choosing a store</Subheading>
@@ -431,10 +440,17 @@ await api.get("/status", { circuitBreaker: false }); // bypass it for one reques
           caption="Cache stores"
           head={["cache", "Store"]}
           rows={[
-            ["Not set", "IndexedDB in browsers, off in Node"],
-            [<C key="c">false</C>, "Off"],
+            [
+              <>
+                Not set, or <C>false</C>
+              </>,
+              "Off",
+            ],
             [<C key="c">"memory"</C>, "In-process, least recently used, 500 entries"],
-            [<C key="c">"indexeddb"</C>, "IndexedDB; throws where there is none"],
+            [
+              <C key="c">"indexeddb"</C>,
+              "IndexedDB, kept across reloads; throws where there is none",
+            ],
             [
               "An adapter",
               <>
@@ -449,7 +465,7 @@ await api.get("/status", { circuitBreaker: false }); // bypass it for one reques
 import { createHttp, memoryCache, redisCache } from "${P}";
 import Redis from "ioredis";
 
-// Browser: survives reloads
+// Browser: public data, kept across reloads
 const browserApi = createHttp({ baseUrl, cache: "indexeddb", cacheTtlMs: 5 * 60_000 });
 
 // Node, one process
@@ -466,15 +482,18 @@ await localApi.get("/countries", { cacheTtlMs: 86_400_000 });`}
 
         <Subheading id="cache-keys">Cache keys and users</Subheading>
         <p>
-          The key is the full URL by default. That's fine for public data, and for a cache only one
-          person sees, like IndexedDB in their browser.
+          The key is the full URL by default. That's only safe when the response is the same for
+          everyone who asks.
         </p>
         <Alert intent="warning">
-          <AlertTitle>Shared caches need the user in the key</AlertTitle>
+          <AlertTitle>If a response depends on the user, the key must name the user</AlertTitle>
           <AlertDescription>
-            With Redis, or <C>memoryCache</C> on a server, a key of the URL alone can serve one
-            user's response to another. Add the user with <C>cacheKey</C>, or set{" "}
-            <C>cache: false</C> on those requests.
+            This includes a browser cache. When one account logs out and another logs in on the same
+            browser, a key of the URL alone serves the first account's data to the second. Requests
+            with credential headers aren't cached until <C>cacheKey</C> is set, and a{" "}
+            <C>cacheKey</C> that returns no key skips the cache rather than using the URL. Cookies
+            the browser attaches on its own are invisible to the client, so for a cookie session,
+            add the user's id to the key yourself or leave caching off.
           </AlertDescription>
         </Alert>
         <Code
@@ -482,10 +501,23 @@ await localApi.get("/countries", { cacheTtlMs: 86_400_000 });`}
           code={`
 const api = createHttp({
   baseUrl,
-  cache: redisCache(redis),
-  cacheKey: (config, url) => \`\${config.headers?.["x-user-id"] ?? "anon"}:\${url}\`,
+  cache: "indexeddb",
+  // Runs after the request interceptors, so it sees the Authorization header they add.
+  cacheKey: (config, url) => \`\${config.headers?.authorization ?? "anon"} \${url}\`,
 });`}
         />
+
+        <Subheading id="cache-clear">Clearing the cache</Subheading>
+        <Code
+          language="ts"
+          code={`
+await api.cache.clear();        // every entry; call it when the user logs out
+await api.cache.delete("/me");  // one URL, keyed the way a GET to it would be`}
+        />
+        <p>
+          <C>api.cache.delete</C> runs your request interceptors first, so a <C>cacheKey</C> that
+          reads a header they add finds the right entry. Both calls do nothing when caching is off.
+        </p>
 
         <Subheading id="custom-store">Your own store</Subheading>
         <p>
@@ -501,6 +533,7 @@ const myCache: CacheAdapter = {
   async get(key) { /* a CacheEntry, or undefined if missing or expired */ },
   async set(key, entry, ttlMs) { /* store it; expire it after ttlMs */ },
   async delete(key) { /* remove it */ },
+  async clear() { /* remove every entry this adapter stored */ },
 };`}
         />
       </Section>
@@ -590,7 +623,10 @@ api.interceptors.request.use((config) => ({
             The request is sent through the origin's circuit breaker, with a timeout and your
             signal. A failure worth retrying waits, then tries again.
           </li>
-          <li>A 200 that can be cached is stored.</li>
+          <li>
+            A 200 that can be cached is stored. A successful write removes the cached <C>GET</C> for
+            its URL.
+          </li>
           <li>Response interceptors run, in order, and can change the result or recover.</li>
           <li>
             On a <C>401</C> with <C>refreshAuth</C> set, the token is refreshed and the whole flow
@@ -621,10 +657,14 @@ api.interceptors.request.use((config) => ({
             [
               <C key="o">cache</C>,
               <C key="t">{'false | "memory" | "indexeddb" | CacheAdapter'}</C>,
-              "IndexedDB in browsers, off in Node",
+              "Off",
             ],
             [<C key="o">cacheTtlMs</C>, <C key="t">number</C>, "60000"],
-            [<C key="o">cacheKey</C>, <C key="t">{"(config, url) => string"}</C>, "The full URL"],
+            [
+              <C key="o">cacheKey</C>,
+              <C key="t">{"(config, url) => string"}</C>,
+              "The full URL. Without one, requests with credentials aren't cached",
+            ],
             [
               <C key="o">refreshAuth</C>,
               <C key="t">{"() => Promise<void>"}</C>,
