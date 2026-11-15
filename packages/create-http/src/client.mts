@@ -98,6 +98,7 @@ export function createHttp(options: ClientOptions = {}): HttpClient {
       ? undefined
       : new BreakerRegistry({ ...DEFAULT_BREAKER, ...options.circuitBreaker });
   let refreshing: Promise<void> | undefined;
+  let writes = 0; // successful writes so far; a GET that overlapped one doesn't store its response
 
   function withDefaults(config: RequestConfig): RequestConfig {
     const merged: RequestConfig = {
@@ -119,7 +120,9 @@ export function createHttp(options: ClientOptions = {}): HttpClient {
   }
 
   // The key a GET to this request's URL is stored under. Called after the request
-  // interceptors, so it sees the final URL and headers.
+  // interceptors, so it sees the final URL and headers. For a write it gets the write's own
+  // config with the method set to GET: a cacheKey that reads the body or a header only the
+  // write sends won't find the GET's entry.
   function keyFor(config: RequestConfig, url: string): string {
     return options.cacheKey?.({ ...config, method: "GET" }, url) ?? url;
   }
@@ -147,15 +150,22 @@ export function createHttp(options: ClientOptions = {}): HttpClient {
     }
 
     const breaker = breakers && config.circuitBreaker !== false ? breakers.forUrl(url) : undefined;
+    const writesBefore = writes;
     const res = await sendWithResilience(config, attemptOnce, breaker, retryFor(config));
 
     // A write that succeeded makes the cached GET for its URL stale (RFC 9111, section 4.4).
-    // Awaited, so a GET sent right after the write can't read the old entry.
+    // Awaited, so a GET sent right after the write can't read the old entry. If the delete
+    // fails, clear everything rather than leave stale data to be served.
     if (cache && !SAFE_METHODS.has(method)) {
-      await cache.delete(keyFor(config, url)).catch(() => {});
+      writes++;
+      await cache
+        .delete(keyFor(config, url))
+        .catch(() => cache.clear())
+        .catch(() => {});
     }
 
-    if (cache && key !== undefined) {
+    // A GET whose response may predate a write that finished meanwhile isn't stored.
+    if (cache && key !== undefined && writes === writesBefore) {
       const entry = toEntry(res);
       if (entry) {
         const ttl = config.cacheTtlMs ?? options.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;

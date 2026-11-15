@@ -71,7 +71,8 @@ const server = http.createServer((req, res) => {
           if (!name) return json(422, { error: "name is required" });
           profileName = name;
         }
-        return json(200, { name: profileName });
+        // x-delay holds the answer back, as a slow server would, with the name read on arrival.
+        return setTimeout(json, Number(req.headers["x-delay"] ?? 0), 200, { name: profileName });
       case "/v1/slow":
         return setTimeout(() => json(200, {}), 300);
       default:
@@ -262,6 +263,18 @@ describe("caching", () => {
     assert.equal(after.fromCache, false);
     assert.equal(after.data.name, "Grace");
     assert.equal((await api.get("/count")).fromCache, true); // other URLs stay cached
+  });
+
+  test("a GET that overlaps a write doesn't store what may be stale", async () => {
+    const api = createHttp({ baseUrl: base, cache: memoryCache() });
+    profileName = "Ada";
+    const slowRead = api.get<{ name: string }>("/profile", { headers: { "x-delay": "50" } }); // reads Ada now
+    await new Promise((resolve) => setTimeout(resolve, 10)); // let it reach the server
+    await api.put("/profile", { name: "Grace" });
+    assert.equal((await slowRead).data.name, "Ada");
+    const next = await api.get<{ name: string }>("/profile");
+    assert.equal(next.fromCache, false);
+    assert.equal(next.data.name, "Grace");
   });
 
   test("a failed write leaves the cache alone", async () => {
