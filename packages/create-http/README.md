@@ -251,37 +251,39 @@ A cancelled request doesn't count either way.
 
 ## Caching
 
-The client can cache `GET` responses. A response is stored only if:
+Caching is off until you choose a store. The client can then cache `GET` responses. A response is stored only if:
 
 - the status is 200,
-- it has no `Cache-Control: no-store`, and
-- its body is JSON or text (`Blob` bodies are never cached).
+- it has no `Cache-Control: no-store`,
+- its body is JSON or text (`Blob` bodies are never cached), and
+- the request has no `Authorization` header, unless you set a [`cacheKey`](#cache-keys-and-signed-in-users).
 
 A cached response skips the network, the retries and the breaker, but still runs your response interceptors. It comes back with `fromCache: true`.
 
 Entries live for `cacheTtlMs` (60 seconds by default). The client doesn't read `Cache-Control: max-age` or `ETag`; the TTL is the only rule.
 
+A `PUT`, `PATCH`, `POST` or `DELETE` that succeeds removes the cached `GET` for the same URL before it resolves, so the next read goes to the server. Only that exact URL is removed: `/users/1?fields=name` keeps its entry until it expires.
+
 ### Choosing a store
 
 | `cache` | Store |
 | --- | --- |
-| not set | IndexedDB in browsers, off in Node |
-| `false` | off |
+| not set, or `false` | off |
 | `"memory"` | in-process, least-recently-used, 500 entries |
-| `"indexeddb"` | IndexedDB; throws when the runtime has none |
+| `"indexeddb"` | IndexedDB, kept across page reloads; throws when the runtime has none |
 | an adapter | your own, for example `memoryCache(…)` or `redisCache(…)` |
 
 ```ts
 import { createHttp, memoryCache, redisCache } from "fast-http-client";
 import Redis from "ioredis";
 
-// Browser: persists across reloads
+// Browser: public data, kept across reloads
 const browserApi = createHttp({ baseUrl, cache: "indexeddb", cacheTtlMs: 5 * 60_000 });
 
 // Node, one process
 const localApi = createHttp({ baseUrl, cache: memoryCache(1_000) });
 
-// Node, shared between processes (any client with ioredis's get / set(key, value, "PX", ms) / del)
+// Node, shared between processes (ioredis, or any client with the same get, set, del and scan)
 const sharedApi = createHttp({ baseUrl, cache: redisCache(new Redis(process.env.REDIS_URL), "api:") });
 ```
 
@@ -296,19 +298,29 @@ await api.get("/countries", { cacheTtlMs: 86_400_000 }); // keep for a day
 
 ### Cache keys and signed-in users
 
-By default the key is the full URL. That is fine for public data and for a cache only one user can see, like IndexedDB in their browser.
+By default the key is the full URL. That is only safe when the response is the same for everyone who asks.
 
-**A shared cache (Redis, or `memoryCache` on a server) must not use the URL alone when responses depend on who is asking.** Otherwise one user's response is served to another. Put the user in the key:
+**If a response depends on who is asking, the key must say who.** That includes a browser cache: when one account logs out and another logs in on the same browser, a key of the URL alone serves the first account's data to the second. Put the user in the key:
 
 ```ts
 const api = createHttp({
   baseUrl,
-  cache: redisCache(redis),
-  cacheKey: (config, url) => `${config.headers?.["x-user-id"] ?? "anon"}:${url}`,
+  cache: "indexeddb",
+  // Runs after the request interceptors, so it sees the Authorization header they add.
+  cacheKey: (config, url) => `${config.headers?.authorization ?? "anon"} ${url}`,
 });
 ```
 
-Or turn caching off for those requests with `cache: false`.
+Requests with an `Authorization` header are not cached at all until `cacheKey` is set. Sessions held in a cookie are invisible to the client, so for those, put the user's id in the key yourself, or leave caching off.
+
+### Clearing the cache
+
+```ts
+await api.cache.clear();          // every entry; call it when the user logs out
+await api.cache.delete("/me");    // one URL, keyed the way a GET to it would be
+```
+
+`api.cache.delete` runs your request interceptors first, so a `cacheKey` that reads a header they add finds the right entry. Both calls do nothing when caching is off.
 
 ### Your own store
 
@@ -321,6 +333,7 @@ const myCache: CacheAdapter = {
   async get(key) { /* return a CacheEntry, or undefined if missing or expired */ },
   async set(key, entry, ttlMs) { /* store it; expire it after ttlMs */ },
   async delete(key) { /* remove it */ },
+  async clear() { /* remove every entry this adapter stored */ },
 };
 ```
 
@@ -418,7 +431,8 @@ cache lookup ──────────────── GET only; a hit sk
 │ retryable failure → wait (backoff or Retry-After) → again │
 └───────────────────────────────────────────────────────────┘
   ▼
-cache store ───────────────── 200, not no-store, JSON or text
+cache store ───────────────── GET: 200, not no-store, JSON or text
+                              other methods: drop the cached GET for this URL
   ▼
 response interceptors ─────── in order; can transform or recover
   ▼
@@ -438,9 +452,9 @@ HttpResponse<T>  or  thrown error
 | `timeoutMs` | `number` | `10000` per attempt |
 | `retry` | `false \| Partial<RetryOptions>` | `DEFAULT_RETRY` |
 | `circuitBreaker` | `false \| Partial<BreakerOptions>` | `DEFAULT_BREAKER` |
-| `cache` | `false \| "memory" \| "indexeddb" \| CacheAdapter` | IndexedDB in browsers, off in Node |
+| `cache` | `false \| "memory" \| "indexeddb" \| CacheAdapter` | off |
 | `cacheTtlMs` | `number` | `60000` |
-| `cacheKey` | `(config: RequestConfig, url: string) => string` | the full URL |
+| `cacheKey` | `(config: RequestConfig, url: string) => string` | the full URL; requests with `Authorization` aren't cached without one |
 | `refreshAuth` | `() => Promise<void>` | none (a `401` is just an error) |
 
 ### Exports
